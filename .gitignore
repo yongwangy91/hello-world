@@ -1,11 +1,3 @@
-__pycache__/
-*.pyc
-*.db
-*.log
-static/index.html # We want to keep this, but often static assets are built. Here source is static so keep it.
-# Actually, wait. I want to keep static/index.html.
-# I just want to ignore artifacts.
-
 # Python
 __pycache__/
 *.pyc
