@@ -7,14 +7,26 @@ import crawler
 import uvicorn
 from typing import List
 from pydantic import BaseModel
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = FastAPI()
 
+# Mount static files (frontend)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Scheduler setup
+scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
 def on_startup():
     init_db()
+    # Schedule the crawl to run every day at 09:00 AM
+    scheduler.add_job(crawler.run_crawlers, 'cron', hour=9, minute=0)
+    scheduler.start()
+
+@app.on_event("shutdown")
+def on_shutdown():
+    scheduler.shutdown()
 
 class JobSchema(BaseModel):
     title: str

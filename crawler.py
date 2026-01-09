@@ -157,11 +157,105 @@ def crawl_goldman_sachs(db: Session):
         browser.close()
     logger.info("Goldman Sachs crawl finished.")
 
+def crawl_jpmorgan(db: Session):
+    logger.info("Starting J.P. Morgan crawl...")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        # JPM's Oracle Cloud portal is heavy. Trying a robust search URL if possible,
+        # otherwise we hit the main search.
+        # This URL filters for Hong Kong and Internship program (Programs=Internship)
+        # Note: Selectors on Oracle Cloud apps are notoriously dynamic (ids like "pt1:r1:0:cl1").
+        # We will try to find job cards by class or role.
+
+        # Using a generalized search page for students
+        url = "https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/requisitions?location=Hong+Kong&locationId=300000000223789"
+
+        try:
+            page.goto(url, timeout=60000)
+            page.wait_for_timeout(8000) # Wait for Oracle heavy JS
+
+            # Try to grab job list items.
+            # Looking for links that contain job titles.
+            job_links = page.locator("a.job-title-link").all() # Guessing class based on Oracle templates
+
+            if not job_links:
+                # Fallback: finding any link inside a list item
+                job_links = page.locator("li a").all()
+
+            for link in job_links:
+                try:
+                    title = link.inner_text().strip()
+                    href = link.get_attribute("href")
+
+                    if "Intern" in title or "Summer" in title or "Analyst" in title:
+                         if href and not href.startswith("http"):
+                            # Oracle cloud usually uses relative hash/fragments or full paths
+                             if href.startswith("/"):
+                                href = "https://jpmc.fa.oraclecloud.com" + href
+                             else:
+                                # Sometimes it's a javascript action, skip those
+                                continue
+
+                         save_job(db, title, "J.P. Morgan", href, "Hong Kong", datetime.now().strftime("%Y-%m-%d"))
+                except:
+                    continue
+        except Exception as e:
+            logger.error(f"Error crawling J.P. Morgan: {e}")
+
+        browser.close()
+    logger.info("J.P. Morgan crawl finished.")
+
+def crawl_ubs(db: Session):
+    logger.info("Starting UBS crawl...")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        # UBS Search URL - filtered for HK
+        url = "https://jobs.ubs.com/TGnewUI/Search/Home/HomeWithPreLoad?partnerid=25008&siteid=5012&PageType=searchResults&SearchType=linkquery&LinkID=15231"
+
+        try:
+            page.goto(url)
+            page.wait_for_timeout(5000)
+
+            # UBS uses a list structure.
+            # We look for job titles which are usually in <h3> or <a> with specific classes.
+            # Let's try to get all 'a' tags and filter by known structure or content.
+
+            links = page.locator("li.finding-result a").all() # Common structure
+            if not links:
+                links = page.locator("a").all() # Fallback
+
+            for link in links:
+                try:
+                    title = link.inner_text().strip()
+                    href = link.get_attribute("href")
+
+                    # Filter for HK and Intern
+                    # The URL filters for HK, so we check title for Intern
+                    if title and ("Intern" in title or "Summer" in title) and "Hong Kong" in page.content():
+                        # Note: checking page content is weak, but the URL is HK specific.
+                        # Let's trust the URL filter + title check.
+
+                        if href and not href.startswith("http"):
+                             href = "https://jobs.ubs.com" + href
+
+                        save_job(db, title, "UBS", href, "Hong Kong", datetime.now().strftime("%Y-%m-%d"))
+                except:
+                    continue
+        except Exception as e:
+            logger.error(f"Error crawling UBS: {e}")
+
+        browser.close()
+    logger.info("UBS crawl finished.")
+
 def run_crawlers():
     db = SessionLocal()
     try:
         crawl_morgan_stanley(db)
         crawl_goldman_sachs(db)
+        crawl_jpmorgan(db)
+        crawl_ubs(db)
     finally:
         db.close()
 
