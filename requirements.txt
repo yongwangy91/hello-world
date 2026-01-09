@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+sqlalchemy
+playwright
+pydantic
+apscheduler
